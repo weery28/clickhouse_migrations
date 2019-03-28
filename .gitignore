@@ -24,3 +24,11 @@ hs_err_pid*
 
 \.idea/
 \.gradle/
+\build/
+app/out/
+
+config\.json
+
+migrations/
+
+\.DS_Store
