@@ -29,6 +29,4 @@ app/out/
 
 config\.json
 
-migrations/
-
 \.DS_Store
