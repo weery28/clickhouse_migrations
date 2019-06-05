@@ -11,27 +11,25 @@ import io.vertx.reactivex.ext.jdbc.JDBCClient
 import ru.yandex.clickhouse.except.ClickHouseException
 import java.util.Date
 
-
 fun main(args: Array<String>) {
     Vertx.vertx().deployVerticle(MainVerticle::class.java.name)
 }
 
 class MainVerticle : AbstractVerticle() {
 
-    private lateinit var client : JDBCClient
+    private lateinit var client: JDBCClient
     private lateinit var config: Config
     override fun start() {
 
-
-
-
         config = vertx.fileSystem().readFileBlocking("./config.json").toJsonObject().mapTo(Config::class.java)
 
-        client = JDBCClient.createShared(vertx, JsonObject()
-            .put("url", config.url)
-            .put("driver_class", "ru.yandex.clickhouse.ClickHouseDriver")
-            .put("user", config.user)
-            .put("password", config.password))
+        client = JDBCClient.createShared(
+            vertx, JsonObject()
+                .put("url", config.url)
+                .put("driver_class", "ru.yandex.clickhouse.ClickHouseDriver")
+                .put("user", config.user)
+                .put("password", config.password)
+        )
 
         checkExistSystemTable(client).flatMapCompletable {
             if (it) {
@@ -57,7 +55,7 @@ class MainVerticle : AbstractVerticle() {
             }
             .flatMapCompletable {
                 if (checkOrder(it)) {
-                    applyMigrations(it)
+                    applyMigrations(it.sortedBy { it.version })
                 } else {
                     println("Bad migration list")
                     Completable.complete()
@@ -67,7 +65,7 @@ class MainVerticle : AbstractVerticle() {
                 vertx.undeploy(deploymentID())
                 println("All migrations applied. Actual state.")
                 System.exit(0)
-            },{
+            }, {
                 it.printStackTrace()
             })
     }
@@ -90,20 +88,21 @@ class MainVerticle : AbstractVerticle() {
                     Single.error(it)
                 }
             }
-
     }
 
     private fun createMigrationsTable(client: JDBCClient): Completable {
 
         return client.rxGetConnection()
             .flatMapCompletable { conn ->
-                conn.rxQuery("CREATE TABLE migrations(\n" +
-                    "  id        UUID DEFAULT generateUUIDv4(),\n" +
-                    "  version UInt64,\n" +
-                    "  time DateTime\n" +
-                    ")\n" +
-                    "ENGINE MergeTree()\n" +
-                    "ORDER BY (id);\n").ignoreElement()
+                conn.rxQuery(
+                    "CREATE TABLE migrations(\n" +
+                        "  id        UUID DEFAULT generateUUIDv4(),\n" +
+                        "  version UInt64,\n" +
+                        "  time DateTime\n" +
+                        ")\n" +
+                        "ENGINE MergeTree()\n" +
+                        "ORDER BY (id);\n"
+                ).ignoreElement()
                     .andThen(
                         conn.rxQuery("INSERT INTO migrations (version, time) VALUES (0, ${Date().time})")
                             .ignoreElement()
@@ -120,9 +119,11 @@ class MainVerticle : AbstractVerticle() {
 
         return client.rxGetConnection()
             .flatMap { conn ->
-                conn.rxQuery("SELECT version FROM migrations\n" +
-                    "ORDER BY time DESC \n" +
-                    "LIMIT 1;")
+                conn.rxQuery(
+                    "SELECT version FROM migrations\n" +
+                        "ORDER BY time DESC \n" +
+                        "LIMIT 1;"
+                )
                     .map {
                         it.rows.first().getLong("version")
                     }
@@ -170,32 +171,36 @@ class MainVerticle : AbstractVerticle() {
         return true
     }
 
-    private fun applyMigrations(migrations: List<Migration>) : Completable {
+    private fun applyMigrations(migrations: List<Migration>): Completable {
 
         var res = Completable.complete()
         migrations.forEach {
             res = res.andThen(client.rxGetConnection()
-                .flatMapCompletable {
-                    conn ->
-                    conn.rxQuery(it.query)
-                        .ignoreElement()
-                        .andThen(
-                            conn.rxQuery("INSERT INTO migrations (version, time) VALUES (${it.version}, ${Date().time})")
-                                .ignoreElement()
-                        )
-                        .doOnComplete {
-                            println("${it.version} ----- SUCCESSFULLY APPLIED")
-                        }
-                        .doOnError {
-                            e->
-                            println()
-                            println()
-                            println("Migration with V.${it.version} has bad query")
-                            println()
-                            println(e.message)
+                .flatMapCompletable { conn ->
 
-                        }
+                    val completables = it.query.split(";").filter { it.isNotBlank() && it.isNotEmpty() }
+                        .mapIndexed { index, singleQuery ->
+                        conn.rxQuery(singleQuery)
+                            .ignoreElement()
+                            .andThen(
+                                conn.rxQuery("INSERT INTO migrations (version, time) VALUES (${it.version}, ${Date().time})")
+                                    .ignoreElement()
+                            )
+                            .doOnComplete {
+                                println("${it.version}.$index ----- SUCCESSFULLY APPLIED")
+                            }
+                            .doOnError { e ->
+                                println()
+                                println()
+                                println("Migration with V.${it.version} has bad query")
+                                println()
+                                println(e.message)
+
+                            }
+                    }
+                    completables.reduce { acc, completable -> acc.andThen(completable) }
                         .doFinally { conn.close() }
+
                 })
         }
         return res
@@ -212,11 +217,11 @@ class Config(
     val path: String,
 
     @JsonProperty("url")
-    val url : String,
+    val url: String,
 
     @JsonProperty("user")
-    val user : String,
+    val user: String,
 
     @JsonProperty("password")
-    val password : String
+    val password: String
 )
