@@ -11,12 +11,14 @@ import ru.yandex.clickhouse.except.ClickHouseException
 import java.util.Date
 
 class ChMigrationVerticle(
-    val config: Config
+    val config: Config,
+    val onComplete : () -> Unit
 ) : AbstractVerticle() {
 
     private lateinit var client: JDBCClient
 
     override fun start() {
+
         client = JDBCClient.createShared(
             vertx, JsonObject()
             .put("url", config.url)
@@ -59,9 +61,11 @@ class ChMigrationVerticle(
             .andThen(vertx.rxClose())
             .subscribe({
                 println("All migrations applied. Actual state.")
+                onComplete()
             }, {
                 it.printStackTrace()
                 vertx.rxUndeploy(deploymentID()).andThen(vertx.rxClose()).subscribe()
+                throw it
             })
     }
 
