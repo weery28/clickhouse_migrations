@@ -2,6 +2,7 @@ package me.coweery.migrations
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import io.reactivex.Completable
+import io.reactivex.CompletableEmitter
 import io.reactivex.Single
 import io.reactivex.functions.BiFunction
 import io.vertx.core.json.JsonObject
@@ -12,7 +13,7 @@ import java.util.Date
 
 class ChMigrationVerticle(
     val config: Config,
-    val onComplete : () -> Unit
+    val emitter: CompletableEmitter
 ) : AbstractVerticle() {
 
     private lateinit var client: JDBCClient
@@ -61,11 +62,11 @@ class ChMigrationVerticle(
             .andThen(vertx.rxClose())
             .subscribe({
                 println("All migrations applied. Actual state.")
-                onComplete()
+                emitter.onComplete()
             }, {
                 it.printStackTrace()
                 vertx.rxUndeploy(deploymentID()).andThen(vertx.rxClose()).subscribe()
-                throw it
+                emitter.onError(it)
             })
     }
 
