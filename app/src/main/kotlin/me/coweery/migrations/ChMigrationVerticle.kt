@@ -6,30 +6,23 @@ import io.reactivex.Single
 import io.reactivex.functions.BiFunction
 import io.vertx.core.json.JsonObject
 import io.vertx.reactivex.core.AbstractVerticle
-import io.vertx.reactivex.core.Vertx
 import io.vertx.reactivex.ext.jdbc.JDBCClient
 import ru.yandex.clickhouse.except.ClickHouseException
 import java.util.Date
-import kotlin.system.exitProcess
 
-fun main(args: Array<String>) {
-    Vertx.vertx().deployVerticle(MainVerticle::class.java.name)
-}
-
-class MainVerticle : AbstractVerticle() {
+class ChMigrationVerticle(
+    val config: Config
+) : AbstractVerticle() {
 
     private lateinit var client: JDBCClient
-    private lateinit var config: Config
+
     override fun start() {
-
-        config = vertx.fileSystem().readFileBlocking("./config.json").toJsonObject().mapTo(Config::class.java)
-
         client = JDBCClient.createShared(
             vertx, JsonObject()
-                .put("url", config.url)
-                .put("driver_class", "ru.yandex.clickhouse.ClickHouseDriver")
-                .put("user", config.user)
-                .put("password", config.password)
+            .put("url", config.url)
+            .put("driver_class", "ru.yandex.clickhouse.ClickHouseDriver")
+            .put("user", config.user)
+            .put("password", config.password)
         )
 
         checkExistSystemTable(client).flatMapCompletable {
@@ -179,23 +172,23 @@ class MainVerticle : AbstractVerticle() {
 
                     val completables = it.query.split(";").filter { it.isNotBlank() && it.isNotEmpty() }
                         .mapIndexed { index, singleQuery ->
-                        conn.rxQuery(singleQuery)
-                            .ignoreElement()
-                            .andThen(
-                                conn.rxQuery("INSERT INTO migrations (version, time) VALUES (${it.version}, ${Date().time})")
-                                    .ignoreElement()
-                            )
-                            .doOnComplete {
-                                println("${it.version}.$index ----- SUCCESSFULLY APPLIED")
-                            }
-                            .doOnError { e ->
-                                println()
-                                println()
-                                println("Migration with V.${it.version} has bad query")
-                                println()
-                                println(e.message)
-                            }
-                    }
+                            conn.rxQuery(singleQuery)
+                                .ignoreElement()
+                                .andThen(
+                                    conn.rxQuery("INSERT INTO migrations (version, time) VALUES (${it.version}, ${Date().time})")
+                                        .ignoreElement()
+                                )
+                                .doOnComplete {
+                                    println("${it.version}.$index ----- SUCCESSFULLY APPLIED")
+                                }
+                                .doOnError { e ->
+                                    println()
+                                    println()
+                                    println("Migration with V.${it.version} has bad query")
+                                    println()
+                                    println(e.message)
+                                }
+                        }
                     completables.reduce { acc, completable -> acc.andThen(completable) }
                         .doFinally { conn.close() }
                 })
