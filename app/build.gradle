@@ -25,8 +25,8 @@ sourceCompatibility = 1.8
 
 repositories {
     maven {     url 'http://dl.bintray.com/kotlin/kotlin-eap' }
-    maven { url "https://jitpack.io" }
     mavenCentral()
+    maven { url "https://jitpack.io" }
 }
 
 mainClassName = 'io.vertx.core.Launcher'
