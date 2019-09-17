@@ -10,6 +10,7 @@ import io.vertx.reactivex.core.Vertx
 import io.vertx.reactivex.ext.jdbc.JDBCClient
 import ru.yandex.clickhouse.except.ClickHouseException
 import java.util.Date
+import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
     Vertx.vertx().deployVerticle(MainVerticle::class.java.name)
@@ -61,12 +62,13 @@ class MainVerticle : AbstractVerticle() {
                     Completable.complete()
                 }
             }
+            .andThen(vertx.rxUndeploy(deploymentID()))
+            .andThen(vertx.rxClose())
             .subscribe({
-                vertx.undeploy(deploymentID())
                 println("All migrations applied. Actual state.")
-                System.exit(0)
             }, {
                 it.printStackTrace()
+                vertx.rxUndeploy(deploymentID()).andThen(vertx.rxClose()).subscribe()
             })
     }
 
@@ -111,7 +113,7 @@ class MainVerticle : AbstractVerticle() {
             }.doOnComplete {
                 println("System migrations table successfully created")
             }.doOnError {
-                //it.printStackTrace()
+                // it.printStackTrace()
             }
     }
 
@@ -120,12 +122,10 @@ class MainVerticle : AbstractVerticle() {
         return client.rxGetConnection()
             .flatMap { conn ->
                 conn.rxQuery(
-                    "SELECT version FROM migrations\n" +
-                        "ORDER BY time DESC \n" +
-                        "LIMIT 1;"
+                    "SELECT max(version) FROM migrations"
                 )
                     .map {
-                        it.rows.first().getLong("version")
+                        it.rows.first().getLong("max(version)")
                     }
                     .doOnSuccess {
                         println("Current table version = $it")
@@ -145,7 +145,6 @@ class MainVerticle : AbstractVerticle() {
                     .onEach {
                         println("Found $it migration file")
                     }
-
             }
             .flatMap { migrationFileNames ->
                 migrationFileNames.fold(Single.just<MutableList<Migration>>(mutableListOf())) { acc, fileName ->
@@ -195,12 +194,10 @@ class MainVerticle : AbstractVerticle() {
                                 println("Migration with V.${it.version} has bad query")
                                 println()
                                 println(e.message)
-
                             }
                     }
                     completables.reduce { acc, completable -> acc.andThen(completable) }
                         .doFinally { conn.close() }
-
                 })
         }
         return res
