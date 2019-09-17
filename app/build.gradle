@@ -4,19 +4,12 @@ buildscript {
         mavenCentral()
         jcenter()
     }
-
-    dependencies {
-        classpath 'com.github.jengelman.gradle.plugins:shadow:2.0.2'
-    }
 }
 
 plugins {
     id 'java'
-    id 'application'
     id 'org.jetbrains.kotlin.jvm' version '1.3.20'
 }
-
-apply plugin: 'com.github.johnrengelman.shadow'
 
 group 'me.coweery'
 version '0.0.1'
@@ -29,24 +22,9 @@ repositories {
     maven { url "https://jitpack.io" }
 }
 
-mainClassName = 'io.vertx.core.Launcher'
-
 sourceSets {
     main.java.srcDirs += [file("$buildDir/generated/source/kapt/main/")]
 }
-
-shadowJar {
-    baseName = 'app'
-    classifier = 'shadow'
-
-    manifest {
-        attributes 'Main-Verticle': 'me.coweery.migrations.MainVerticle'
-    }
-    mergeServiceFiles {
-        include 'META-INF/services/io.vertx.core.spi.VerticleFactory'
-    }
-}
-
 
 dependencies {
     compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
